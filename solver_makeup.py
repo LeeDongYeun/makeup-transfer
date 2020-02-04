@@ -2,6 +2,7 @@ import torch
 import torch.nn.init as init
 from torch.autograd import Variable
 from torchvision.utils import save_image
+import torchvision.models.vgg as models
 
 import os
 import time
@@ -170,8 +171,10 @@ class Solver_makeupGAN(object):
         self.criterionL1 = torch.nn.L1Loss()
         self.criterionL2 = torch.nn.MSELoss()
         self.criterionGAN = GANLoss(use_lsgan=True, tensor =torch.cuda.FloatTensor)
-        self.vgg = net.VGG()
-        self.vgg.load_state_dict(torch.load('addings/vgg_conv.pth'))
+        # self.vgg = net.VGG()
+        # self.vgg.load_state_dict(torch.load('addings/vgg_conv.pth'))
+        self.vgg = models.vgg19_bn(pretrained=True)
+
         # Optimizers
         self.g_optimizer = torch.optim.Adam(self.G.parameters(), self.g_lr, [self.beta1, self.beta2])
         for i in self.cls:
@@ -386,12 +389,15 @@ class Solver_makeupGAN(object):
                     g_loss_rec_B = self.criterionL1(rec_B, ref_B) * self.lambda_B
 
                     # vgg loss
-                    vgg_org = self.vgg(org_A, self.content_layer)[0]
+
+                    vgg_org = self.vgg.features[:30](org_A) # relu_4_1 feature
+                    # vgg_org = self.vgg(org_A, self.content_layer)[0]
                     vgg_org = Variable(vgg_org.data).detach()
                     vgg_fake_A = self.vgg(fake_A, self.content_layer)[0]
                     g_loss_A_vgg = self.criterionL2(vgg_fake_A, vgg_org) * self.lambda_A * self.lambda_vgg
                     
-                    vgg_ref = self.vgg(ref_B, self.content_layer)[0]
+                    vgg_ref = self.vgg.features[:30](ref_B) # relu_4_1 feature
+                    # vgg_ref = self.vgg(ref_B, self.content_layer)[0]
                     vgg_ref = Variable(vgg_ref.data).detach()
                     vgg_fake_B = self.vgg(fake_B, self.content_layer)[0]
                     g_loss_B_vgg = self.criterionL2(vgg_fake_B, vgg_ref) * self.lambda_B * self.lambda_vgg

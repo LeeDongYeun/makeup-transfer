@@ -5,14 +5,14 @@ default = edict()
 default.snapshot_path = './snapshot/'
 default.vis_path = './visulization/'
 default.log_path = './log/'
-default.data_path = './data/'
+default.data_path = '../../../media/Bag/Faceshift/makeup_dataset/all/'
 
 config = edict()
 # setting for cycleGAN
 # Hyper-parameters
 
 config.multi_gpu = False
-config.gpu_ids = [0,1,2]
+config.gpu_ids = [0,1,2,3]
 
 # Setting path
 config.snapshot_path = default.snapshot_path
