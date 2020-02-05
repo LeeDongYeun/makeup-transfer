@@ -12,9 +12,9 @@ from solver_makeup import Solver_makeupGAN
 def parse_args():
     parser = argparse.ArgumentParser(description='Train GAN')
     # general
-    parser.add_argument('--data_path', default='makeup/makeup_final/', type=str, help='training and test data path')
+    parser.add_argument('--data_path', default='makeup_dataset/', type=str, help='training and test data path')
     parser.add_argument('--dataset', default='MAKEUP', type=str, help='dataset name, MAKEUP means two domain, MMAKEUP means multi-domain')
-    parser.add_argument('--gpus', default='0', type=str, help='GPU device to train with')
+    parser.add_argument('--gpus', default='0,1,2,3', type=str, help='GPU device to train with')
     parser.add_argument('--batch_size', default='1', type=int, help='batch_size')
     parser.add_argument('--vis_step', default='1260', type=int, help='steps between visualization')
     parser.add_argument('--task_name', default='', type=str, help='task name')

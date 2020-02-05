@@ -5,14 +5,15 @@ default = edict()
 default.snapshot_path = './snapshot/'
 default.vis_path = './visulization/'
 default.log_path = './log/'
-default.data_path = '../../../media/Bag/Faceshift/makeup_dataset/all/'
+default.data_path = './data/'
+default.tensorboard_path = './tensorboard/'
 
 config = edict()
 # setting for cycleGAN
 # Hyper-parameters
 
-config.multi_gpu = False
-config.gpu_ids = [0,1,2,3]
+config.multi_gpu = True
+config.gpu_ids = ['0','1','2','3']
 
 # Setting path
 config.snapshot_path = default.snapshot_path
@@ -20,6 +21,7 @@ config.pretrained_path = default.snapshot_path
 config.vis_path = default.vis_path
 config.log_path = default.log_path
 config.data_path = default.data_path
+config.tensorboard_path = default.tensorboard_path
 
 # Setting training parameters
 config.task_name = ""
@@ -64,7 +66,7 @@ def generate_config(_network, _dataset):
             default[k] = v
 
 def merge_cfg_arg(config, args):
-    config.gpu_ids = [int(i) for i in args.gpus.split(',')]
+    config.gpu_ids = [i for i in args.gpus.split(',')]
     config.batch_size = args.batch_size
     config.vis_step = args.vis_step
     config.snapshot_step = args.vis_step

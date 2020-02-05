@@ -3,6 +3,7 @@ import torch.nn.init as init
 from torch.autograd import Variable
 from torchvision.utils import save_image
 import torchvision.models.vgg as models
+from tensorboardX import SummaryWriter
 
 import os
 import time
@@ -15,6 +16,12 @@ from ops.loss_added import GANLoss
 
 class Solver_makeupGAN(object):
     def __init__(self, data_loaders, config, dataset_config):
+        # gpu
+        self.multi_gpu = config.multi_gpu
+        self.gpu_ids = config.gpu_ids
+        os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(self.gpu_ids)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         # dataloader
         self.checkpoint = config.checkpoint
         # Hyper-parameteres
@@ -73,6 +80,7 @@ class Solver_makeupGAN(object):
         self.vis_path = config.vis_path + '_' + config.task_name
         self.snapshot_path = config.snapshot_path + '_' + config.task_name
         self.result_path = config.vis_path + '_' + config.task_name
+        self.tensorboard_path = config.tensorboard_path + '_' + config.task_name
 
         if not os.path.exists(self.log_path):
             os.makedirs(self.log_path)
@@ -80,6 +88,11 @@ class Solver_makeupGAN(object):
             os.makedirs(self.vis_path)
         if not os.path.exists(self.snapshot_path):
             os.makedirs(self.snapshot_path)
+        if not os.path.exists(self.tensorboard_path):
+            os.makedirs(self.tensorboard_path)
+        
+        # create tensorboard writer
+        self.writer = SummaryWriter(log_dir=self.tensorboard_path)
 
         self.build_model()
         # Start with trained model
@@ -124,12 +137,16 @@ class Solver_makeupGAN(object):
         for tag, value in self.loss.items():
             log += ", {}: {:.4f}".format(tag, value)
         print(log)
+    
+    def log_tensorboard(self):
+        for tag, value in self.loss.items():
+            self.writer.add_scalar(tag, value, self.e*self.iters_per_epoch + self.i+1)
 
     def save_models(self):
-        torch.save(self.G.state_dict(),
+        torch.save(self.G.module.state_dict(),
                    os.path.join(self.snapshot_path, '{}_{}_G.pth'.format(self.e + 1, self.i + 1)))
         for i in self.cls:
-            torch.save(getattr(self, "D_" + i).state_dict(),
+            torch.save(getattr(self, "D_" + i).module.state_dict(),
                        os.path.join(self.snapshot_path, '{}_{}_D_'.format(self.e + 1, self.i + 1) + i + '.pth'))
 
     def weights_init_xavier(self, m):
@@ -191,12 +208,24 @@ class Solver_makeupGAN(object):
         self.print_network(self.G, 'G')
         for i in self.cls:
             self.print_network(getattr(self, "D_" + i), "D_" + i)
-
+        """
+        if torch.cuda.device_count() > 1:
+            self.G = torch.nn.DataParallel(self.G)
+            self.vgg = torch.nn.DataParallel(self.vgg)
+            for i in self.cls:
+                setattr(self, "D_" + i, torch.nn.DataParallel(getattr(self, "D_" + i)))
+            
+            self.G.to(self.device)
+            self.vgg.to(self.device)
+            for i in self.cls:
+                getattr(self, "D_" + i).to(self.device)
+        """
         if torch.cuda.is_available():
             self.G.cuda()
             self.vgg.cuda()
             for i in self.cls:
                 getattr(self, "D_" + i).cuda()
+        
 
     def rebound_box(self, mask_A, mask_B, mask_A_face):
         index_tmp = mask_A.nonzero()
@@ -389,17 +418,18 @@ class Solver_makeupGAN(object):
                     g_loss_rec_B = self.criterionL1(rec_B, ref_B) * self.lambda_B
 
                     # vgg loss
-
-                    vgg_org = self.vgg.features[:30](org_A) # relu_4_1 feature
                     # vgg_org = self.vgg(org_A, self.content_layer)[0]
+                    vgg_org = self.vgg.features[:30](org_A) # relu_4_1 feature
                     vgg_org = Variable(vgg_org.data).detach()
-                    vgg_fake_A = self.vgg(fake_A, self.content_layer)[0]
+                    # vgg_fake_A = self.vgg(fake_A, self.content_layer)[0]
+                    vgg_fake_A = self.vgg.features[:30](fake_A) # relu_4_1 feature
                     g_loss_A_vgg = self.criterionL2(vgg_fake_A, vgg_org) * self.lambda_A * self.lambda_vgg
                     
-                    vgg_ref = self.vgg.features[:30](ref_B) # relu_4_1 feature
                     # vgg_ref = self.vgg(ref_B, self.content_layer)[0]
+                    vgg_ref = self.vgg.features[:30](ref_B) # relu_4_1 feature
                     vgg_ref = Variable(vgg_ref.data).detach()
-                    vgg_fake_B = self.vgg(fake_B, self.content_layer)[0]
+                    # vgg_fake_B = self.vgg(fake_B, self.content_layer)[0]
+                    vgg_fake_B = self.vgg.features[:30](fake_B) # relu_4_1 feature
                     g_loss_B_vgg = self.criterionL2(vgg_fake_B, vgg_ref) * self.lambda_B * self.lambda_vgg
 					
                     loss_rec = (g_loss_rec_A + g_loss_rec_B + g_loss_A_vgg + g_loss_B_vgg) * 0.5
@@ -428,6 +458,7 @@ class Solver_makeupGAN(object):
                 # Print out log info
                 if (self.i + 1) % self.log_step == 0:
                     self.log_terminal()
+                    self.log_tensorboard()
 
                 #plot the figures
                 for key_now in self.loss.keys():
@@ -468,6 +499,7 @@ class Solver_makeupGAN(object):
             os.mkdir(result_path_train)
         save_path = os.path.join(result_path_train, '{}_{}_fake.jpg'.format(self.e, self.i))
         save_image(self.de_norm(img_train_list.data), save_path, normalize=True)
+        self.writer.add_image('Train_Image', self.de_norm(img_train_list.data), self.e*self.iters_per_epoch + self.i+1)
 
     def vis_test(self):
         # saving test results
