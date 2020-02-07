@@ -143,10 +143,10 @@ class Solver_makeupGAN(object):
             self.writer.add_scalar(tag, value, self.e*self.iters_per_epoch + self.i+1)
 
     def save_models(self):
-        torch.save(self.G.module.state_dict(),
+        torch.save(self.G.state_dict(),
                    os.path.join(self.snapshot_path, '{}_{}_G.pth'.format(self.e + 1, self.i + 1)))
         for i in self.cls:
-            torch.save(getattr(self, "D_" + i).module.state_dict(),
+            torch.save(getattr(self, "D_" + i).state_dict(),
                        os.path.join(self.snapshot_path, '{}_{}_D_'.format(self.e + 1, self.i + 1) + i + '.pth'))
 
     def weights_init_xavier(self, m):
@@ -188,9 +188,9 @@ class Solver_makeupGAN(object):
         self.criterionL1 = torch.nn.L1Loss()
         self.criterionL2 = torch.nn.MSELoss()
         self.criterionGAN = GANLoss(use_lsgan=True, tensor =torch.cuda.FloatTensor)
-        # self.vgg = net.VGG()
-        # self.vgg.load_state_dict(torch.load('addings/vgg_conv.pth'))
-        self.vgg = models.vgg19_bn(pretrained=True)
+        self.vgg = net.VGG()
+        self.vgg.load_state_dict(torch.load('addings/vgg_conv.pth'))
+        # self.vgg = models.vgg19_bn(pretrained=True)
 
         # Optimizers
         self.g_optimizer = torch.optim.Adam(self.G.parameters(), self.g_lr, [self.beta1, self.beta2])
@@ -379,17 +379,17 @@ class Solver_makeupGAN(object):
                         loss_idt = (loss_idt_A1 + loss_idt_A2 + loss_idt_B1 + loss_idt_B2) * 0.5
                     else:
                         loss_idt = 0
-                        
-                    # GAN loss D_A(G_A(A))
+                    
                     # fake_A in class B, 
                     fake_A, fake_B = self.G(org_A, ref_B)
+
+                    # GAN loss D_A(G_A(A))
                     pred_fake = getattr(self, "D_" + cls_A)(fake_A)
                     g_A_loss_adv = self.criterionGAN(pred_fake, True)
-                    #g_loss_adv = self.get_G_loss(out)
+
                     # GAN loss D_B(G_B(B))
                     pred_fake = getattr(self, "D_" + cls_B)(fake_B)
                     g_B_loss_adv = self.criterionGAN(pred_fake, True)
-                    rec_B, rec_A = self.G(fake_B, fake_A)
 
                     # color_histogram loss
                     g_A_loss_his = 0
@@ -414,22 +414,19 @@ class Solver_makeupGAN(object):
                             g_B_loss_his += g_B_eye_left_loss_his + g_B_eye_right_loss_his
 
 	                # cycle loss
+                    rec_B, rec_A = self.G(fake_B, fake_A)
                     g_loss_rec_A = self.criterionL1(rec_A, org_A) * self.lambda_A
                     g_loss_rec_B = self.criterionL1(rec_B, ref_B) * self.lambda_B
 
                     # vgg loss
-                    # vgg_org = self.vgg(org_A, self.content_layer)[0]
-                    vgg_org = self.vgg.features[:30](org_A) # relu_4_1 feature
+                    vgg_org = self.vgg(org_A, self.content_layer)[0]
                     vgg_org = Variable(vgg_org.data).detach()
-                    # vgg_fake_A = self.vgg(fake_A, self.content_layer)[0]
-                    vgg_fake_A = self.vgg.features[:30](fake_A) # relu_4_1 feature
+                    vgg_fake_A = self.vgg(fake_A, self.content_layer)[0]
                     g_loss_A_vgg = self.criterionL2(vgg_fake_A, vgg_org) * self.lambda_A * self.lambda_vgg
                     
-                    # vgg_ref = self.vgg(ref_B, self.content_layer)[0]
-                    vgg_ref = self.vgg.features[:30](ref_B) # relu_4_1 feature
+                    vgg_ref = self.vgg(ref_B, self.content_layer)[0]
                     vgg_ref = Variable(vgg_ref.data).detach()
-                    # vgg_fake_B = self.vgg(fake_B, self.content_layer)[0]
-                    vgg_fake_B = self.vgg.features[:30](fake_B) # relu_4_1 feature
+                    vgg_fake_B = self.vgg(fake_B, self.content_layer)[0]
                     g_loss_B_vgg = self.criterionL2(vgg_fake_B, vgg_ref) * self.lambda_B * self.lambda_vgg
 					
                     loss_rec = (g_loss_rec_A + g_loss_rec_B + g_loss_A_vgg + g_loss_B_vgg) * 0.5
@@ -469,7 +466,6 @@ class Solver_makeupGAN(object):
                     print("Saving middle output...")
                     self.vis_train([org_A, ref_B, fake_A, fake_B, rec_A, rec_B])
 
-
                 # Save model checkpoints
                 if (self.i + 1) % self.snapshot_step == 0:
                     self.save_models()
@@ -499,7 +495,7 @@ class Solver_makeupGAN(object):
             os.mkdir(result_path_train)
         save_path = os.path.join(result_path_train, '{}_{}_fake.jpg'.format(self.e, self.i))
         save_image(self.de_norm(img_train_list.data), save_path, normalize=True)
-        self.writer.add_image('Train_Image', self.de_norm(img_train_list.data), self.e*self.iters_per_epoch + self.i+1)
+        self.writer.add_image('Train_Image', self.de_norm(img_train_list.data.squeeze()), self.e*self.iters_per_epoch + self.i+1)
 
     def vis_test(self):
         # saving test results
