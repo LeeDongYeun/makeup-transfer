@@ -8,13 +8,14 @@ from config import config, dataset_config, merge_cfg_arg
 from dataloder import get_loader
 from solver_cycle import Solver_cycleGAN
 from solver_makeup import Solver_makeupGAN
+from solver_makeup2 import Solver_makeupGAN2
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train GAN')
     # general
     parser.add_argument('--data_path', default='makeup_dataset/', type=str, help='training and test data path')
     parser.add_argument('--dataset', default='MAKEUP', type=str, help='dataset name, MAKEUP means two domain, MMAKEUP means multi-domain')
-    parser.add_argument('--gpus', default='0,1,2,3', type=str, help='GPU device to train with')
+    parser.add_argument('--gpus', default='0', type=str, help='GPU device to train with')
     parser.add_argument('--batch_size', default='1', type=int, help='batch_size')
     parser.add_argument('--vis_step', default='1260', type=int, help='steps between visualization')
     parser.add_argument('--task_name', default='', type=str, help='task name')
@@ -54,6 +55,8 @@ def train_net():
         solver = Solver_cycleGAN(data_loaders, config, dataset_config)
     elif args.model =='makeupGAN':
         solver = Solver_makeupGAN(data_loaders, config, dataset_config)
+    elif args.model =='makeupGAN2':
+        solver = Solver_makeupGAN2(data_loaders, config, dataset_config)    
     else:
         print("model that not support")
         exit()

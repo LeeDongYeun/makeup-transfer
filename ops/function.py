@@ -13,9 +13,13 @@ def calc_mean_std(feat, eps=1e-5):
 
 
 def adaptive_instance_normalization(content_feat, style_feat):
-    assert (content_feat.size()[:2] == style_feat.size()[:2])
+    # assert (content_feat.size()[:2] == style_feat.size()[:2]), str(content_feat.size()) + str(style_feat.size())
     size = content_feat.size()
-    style_mean, style_std = calc_mean_std(style_feat)
+    nchannel = content_feat.shape[1]
+    style_mean, style_logstd = style_feat[:, :nchannel], style_feat[:, nchannel:]
+    style_mean = style_mean.view(1, nchannel, 1, 1)
+    style_logstd = style_logstd.view(1, nchannel, 1, 1)
+    style_std = style_logstd.exp()
     content_mean, content_std = calc_mean_std(content_feat)
 
     normalized_feat = (content_feat - content_mean.expand(

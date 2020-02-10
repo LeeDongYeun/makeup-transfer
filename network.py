@@ -55,17 +55,19 @@ class Encoder(nn.Module):
         # Makeup representation encoder
         layers_makeup = []
         for i in range(2):
-            layers_makeup.append(nn.Conv2d(curr_dim, curr_dim*2, kernel_size=3, stride=2, padding=1, bias=False))
-            layers_makeup.append(nn.InstanceNorm2d(curr_dim*2, affine=True))
+            layers_makeup.append(nn.Conv2d(curr_dim, curr_dim, kernel_size=3, stride=2, padding=1, bias=False))
+            layers_makeup.append(nn.InstanceNorm2d(curr_dim, affine=True))
             layers_makeup.append(nn.ReLU(inplace=True))
-            curr_dim = curr_dim * 2
-        layers_makeup.append(nn.MaxPool2d(kernel_size=1, stride=1))
+            
+        layers_makeup.append(nn.AdaptiveAvgPool2d((1, 1)))
+        layers_makeup.append(nn.Flatten())
         layers_makeup.append(nn.Linear(curr_dim, 32))
 
         self.makeup = nn.Sequential(*layers_makeup)
 
     def forward(self, x):
         out = self.main(x)
+
         out_base = self.base(out)
         out_makeup = self.makeup(out)
 
@@ -103,7 +105,7 @@ class Generator(nn.Module):
             layers.append(nn.ReLU(inplace=True))
             curr_dim = curr_dim // 2
         
-        layers.append(nn.Conv2d(input_dim, 3, kernel_size=7, stride=1, padding=3, bias=False))
+        layers.append(nn.Conv2d(curr_dim, 3, kernel_size=7, stride=1, padding=3, bias=False))
         layers.append(nn.InstanceNorm2d(3, affine=True))
         layers.append(nn.Tanh())
 

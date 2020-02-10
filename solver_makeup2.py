@@ -114,7 +114,7 @@ class Solver_makeupGAN2(object):
         if not os.path.exists(self.snapshot_path):
             os.makedirs(self.snapshot_path)
         
-        def print_network(self, model, name):
+    def print_network(self, model, name):
         num_params = 0
         for p in model.parameters():
             num_params += p.numel()
