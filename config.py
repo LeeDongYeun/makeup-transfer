@@ -25,6 +25,7 @@ config.tensorboard_path = default.tensorboard_path
 
 # Setting training parameters
 config.task_name = ""
+config.E_LR = 2e-5 # added
 config.G_LR = 2e-5
 config.D_LR = 2e-5
 config.beta1 = 0.5
@@ -43,6 +44,7 @@ config.lambda_idt = 0.5
 config.img_size = 256
 config.g_conv_dim = 64
 config.d_conv_dim = 64
+config.e_conv_dim = 64 # added
 config.g_repeat_num = 6
 config.d_repeat_num = 3
 
