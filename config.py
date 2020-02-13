@@ -76,6 +76,7 @@ def merge_cfg_arg(config, args):
     config.lambda_cls = args.lambda_cls
     config.lambda_A = args.lambda_rec
     config.lambda_B = args.lambda_rec
+    config.lambda_regu = args.lambda_regu # added
     config.G_LR = args.LR
     config.D_LR = args.LR
     config.num_epochs_decay = args.decay

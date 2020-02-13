@@ -9,6 +9,7 @@ from dataloder import get_loader
 from solver_cycle import Solver_cycleGAN
 from solver_makeup import Solver_makeupGAN
 from solver_makeup2 import Solver_makeupGAN2
+from solver_makeup3 import Solver_makeupGAN3
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train GAN')
@@ -31,6 +32,7 @@ def parse_args():
     parser.add_argument('--g_repeat', default='6', type=int, help='the repeat Res-block in Generator')
     parser.add_argument('--lambda_cls', default='1', type=float, help='the lambda_cls weight')
     parser.add_argument('--lambda_rec', default='10', type=int, help='lambda_A and lambda_B')
+    parser.add_argument('--lambda_regu', default='1', type=float, help='lambda_regu')
     parser.add_argument('--lambda_his', default='1', type=float, help='histogram loss on lips')
     parser.add_argument('--lambda_skin_1', default='0.1', type=float, help='histogram loss on skin equals to lambda_his* lambda_skin')
     parser.add_argument('--lambda_skin_2', default='0.1', type=float, help='histogram loss on skin equals to lambda_his* lambda_skin')
@@ -56,7 +58,9 @@ def train_net():
     elif args.model =='makeupGAN':
         solver = Solver_makeupGAN(data_loaders, config, dataset_config)
     elif args.model =='makeupGAN2':
-        solver = Solver_makeupGAN2(data_loaders, config, dataset_config)    
+        solver = Solver_makeupGAN2(data_loaders, config, dataset_config)
+    elif args.model =='makeupGAN3':
+        solver = Solver_makeupGAN3(data_loaders, config, dataset_config)      
     else:
         print("model that not support")
         exit()
