@@ -245,28 +245,33 @@ class Solver_makeupGAN(object):
         return mask_A_temp, mask_B_temp
 
     def mask_preprocess(self, mask_A, mask_B):
-        index_tmp = mask_A.nonzero()
-        x_A_index = index_tmp[:, 2]
-        y_A_index = index_tmp[:, 3]
-        index_tmp = mask_B.nonzero()
-        x_B_index = index_tmp[:, 2]
-        y_B_index = index_tmp[:, 3]
+        index, index_2 = [], []
+        for m_A, m_B in zip(mask_A, mask_B):
+            index_tmp = m_A.nonzero()
+            x_A_index = index_tmp[:, 1]
+            y_A_index = index_tmp[:, 2]
+            index_tmp = m_B.nonzero()
+            x_B_index = index_tmp[:, 1]
+            y_B_index = index_tmp[:, 2]
+            index.append([x_A_index, y_A_index, x_B_index, y_B_index])
+            index_2.append([x_B_index, y_B_index, x_A_index, y_A_index])
         mask_A = self.to_var(mask_A, requires_grad=False)
         mask_B = self.to_var(mask_B, requires_grad=False)
-        index = [x_A_index, y_A_index, x_B_index, y_B_index]
-        index_2 = [x_B_index, y_B_index, x_A_index, y_A_index]
         return mask_A, mask_B, index, index_2
 
     def criterionHis(self, input_data, target_data, mask_src, mask_tar, index):
-        input_data = (self.de_norm(input_data) * 255).squeeze()
-        target_data = (self.de_norm(target_data) * 255).squeeze()
-        mask_src = mask_src.expand(1, 3, mask_src.size(2), mask_src.size(2)).squeeze()
-        mask_tar = mask_tar.expand(1, 3, mask_tar.size(2), mask_tar.size(2)).squeeze()
+        input_data = (self.de_norm(input_data) * 255)
+        target_data = (self.de_norm(target_data) * 255)
+        mask_src = mask_src.expand(-1, 3, mask_src.size(2), mask_src.size(3))
+        mask_tar = mask_tar.expand(-1, 3, mask_tar.size(2), mask_tar.size(3))
         input_masked = input_data * mask_src
         target_masked = target_data * mask_tar
         # dstImg = (input_masked.data).cpu().clone()
         # refImg = (target_masked.data).cpu().clone()
-        input_match = histogram_matching(input_masked, target_masked, index)
+        input_match = []
+        for (i, t, idx) in zip(input_masked, target_masked, index):
+            input_match.append(histogram_matching(i, t, idx))
+        input_match = torch.stack(input_match)
         input_match = self.to_var(input_match, requires_grad=False)
         loss = self.criterionL1(input_masked, input_match)
         return loss
