@@ -14,7 +14,7 @@ import net, network
 from ops.histogram_matching import *
 from ops.loss_added import GANLoss
 
-class Solver_makeupGAN2(object):
+class Solver_makeupGAN4(object):
     def __init__(self, data_loaders, config, dataset_config):
         # gpu
         self.multi_gpu = config.multi_gpu
@@ -190,7 +190,7 @@ class Solver_makeupGAN2(object):
         self.vgg.load_state_dict(torch.load('addings/vgg_conv.pth'))
 
         # Define loss
-        self.criterionL1 = torch.nn.L1Loss()
+        self.criterionL1 = torch.nn.L1Loss(reduction='none')
         self.criterionL2 = torch.nn.MSELoss()
         self.criterionGAN = GANLoss(use_lsgan=True, tensor =torch.cuda.FloatTensor)
 
