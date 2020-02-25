@@ -45,12 +45,19 @@ class Encoder(nn.Module):
         
         self.main = nn.Sequential(*layers)
 
-        # Base representation encoder
-        layers_base = []
+        # Pose representation encoder
+        layers_pose = []
         for i in range(4):
-            layers_base.append(ResidualBlock(dim_in=curr_dim, dim_out=curr_dim))
+            layers_pose.append(ResidualBlock(dim_in=curr_dim, dim_out=curr_dim))
         
-        self.base = nn.Sequential(*layers_base)
+        self.pose = nn.Sequential(*layers_pose)
+
+        # Face representation encoder
+        layers_face = []
+        for i in range(4):
+            layers_face.append(ResidualBlock(dim_in=curr_dim, dim_out=curr_dim))
+        
+        self.face = nn.Sequential(*layers_face)
 
         # Makeup representation encoder
         layers_makeup = []
@@ -68,10 +75,11 @@ class Encoder(nn.Module):
     def forward(self, x):
         out = self.main(x)
 
-        out_base = self.base(out)
+        out_pose = self.pose(out)
+        out_face = self.face(out)
         out_makeup = self.makeup(out)
 
-        return out_base, out_makeup
+        return out_pose, out_face, out_makeup
     
 
 class Generator(nn.Module):
@@ -90,6 +98,14 @@ class Generator(nn.Module):
         layers_makeup.append(nn.Linear(256, 512))
 
         self.makeup = nn.Sequential(*layers_makeup)
+
+        # Pose and Face blend
+        layers_blend = []
+        for i in range(3):
+            layers_blend.append(ResidualBlock(dim_in=input_dim*2, dim_out=input_dim*2))
+        layers_blend.append(ResidualBlock(dim_in=input_dim*2, dim_out=input_dim))
+
+        self.blend = nn.Sequential(*layers_blend)
 
         # Main Generator
         self.res_1 = ResidualBlock(dim_in=input_dim, dim_out=input_dim)
@@ -111,16 +127,19 @@ class Generator(nn.Module):
 
         self.main = nn.Sequential(*layers)
 
-    def forward(self, r_b, r_m):
+    def forward(self, r_p, r_f, r_m):
+        input_blend = torch.cat((r_p, r_f), dim=1)
+        blend_out = self.blend(input_blend)
+
         makeupFeature = self.makeup(r_m)
 
-        out = self.res_1(r_b)
+        out = self.res_1(blend_out)
         out = adain(out, makeupFeature)
-        out = self.res_2(r_b)
+        out = self.res_2(out)
         out = adain(out, makeupFeature)
-        out = self.res_3(r_b)
+        out = self.res_3(out)
         out = adain(out, makeupFeature)
-        out = self.res_4(r_b)
+        out = self.res_4(out)
         out = adain(out, makeupFeature)
 
         out = self.main(out)

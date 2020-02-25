@@ -116,11 +116,11 @@ class Generator(nn.Module):
 
         out = self.res_1(r_b)
         out = adain(out, makeupFeature)
-        out = self.res_2(r_b)
+        out = self.res_2(out)
         out = adain(out, makeupFeature)
-        out = self.res_3(r_b)
+        out = self.res_3(out)
         out = adain(out, makeupFeature)
-        out = self.res_4(r_b)
+        out = self.res_4(out)
         out = adain(out, makeupFeature)
 
         out = self.main(out)
