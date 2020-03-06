@@ -10,7 +10,7 @@ import time
 import datetime
 
 import tools.plot as plot_fig
-import net, network
+import net, network2
 from ops.histogram_matching import *
 from ops.loss_added import GANLoss
 
@@ -180,8 +180,8 @@ class Solver_makeupGAN4(object):
     
     def build_model(self):
         # Define generators and discriminators
-        self.E = network.Encoder(self.e_conv_dim)
-        self.G = network.Generator(self.g_conv_dim)
+        self.E = network2.Encoder(self.e_conv_dim)
+        self.G = network2.Generator(self.g_conv_dim)
         for i in self.cls:
             setattr(self, "D_" + i, net.Discriminator(self.img_size, self.d_conv_dim, self.d_repeat_num, self.norm))
         
@@ -190,7 +190,8 @@ class Solver_makeupGAN4(object):
         self.vgg.load_state_dict(torch.load('addings/vgg_conv.pth'))
 
         # Define loss
-        self.criterionL1 = torch.nn.L1Loss(reduction='none')
+        self.criterionL1 = torch.nn.L1Loss()
+        self.criterionL1_none_reduct = torch.nn.L1Loss(reduction='none')
         self.criterionL2 = torch.nn.MSELoss()
         self.criterionGAN = GANLoss(use_lsgan=True, tensor =torch.cuda.FloatTensor)
 
@@ -240,18 +241,20 @@ class Solver_makeupGAN4(object):
         return mask_A_temp, mask_B_temp
 
     def mask_preprocess(self, mask_A, mask_B):
-        index_tmp = mask_A.nonzero()
-        x_A_index = index_tmp[:, 2]
-        y_A_index = index_tmp[:, 3]
-        index_tmp = mask_B.nonzero()
-        x_B_index = index_tmp[:, 2]
-        y_B_index = index_tmp[:, 3]
+        index, index_2 = [], []
+        for m_A, m_B in zip(mask_A, mask_B):
+            index_tmp = m_A.nonzero()
+            x_A_index = index_tmp[:, 1]
+            y_A_index = index_tmp[:, 2]
+            index_tmp = m_B.nonzero()
+            x_B_index = index_tmp[:, 1]
+            y_B_index = index_tmp[:, 2]
+            index.append([x_A_index, y_A_index, x_B_index, y_B_index])
+            index_2.append([x_B_index, y_B_index, x_A_index, y_A_index])
         mask_A = self.to_var(mask_A, requires_grad=False)
         mask_B = self.to_var(mask_B, requires_grad=False)
-        index = [x_A_index, y_A_index, x_B_index, y_B_index]
-        index_2 = [x_B_index, y_B_index, x_A_index, y_A_index]
         return mask_A, mask_B, index, index_2
-
+    '''
     def criterionHis(self, input_data, target_data, mask_src, mask_tar, index):
         input_data = (self.de_norm(input_data) * 255).squeeze()
         target_data = (self.de_norm(target_data) * 255).squeeze()
@@ -265,7 +268,55 @@ class Solver_makeupGAN4(object):
         input_match = self.to_var(input_match, requires_grad=False)
         loss = self.criterionL1(input_masked, input_match)
         return loss
+    '''
+    def criterionHis(self, input_data, target_data, mask_src, mask_tar, index):
+        input_data = (self.de_norm(input_data) * 255)
+        target_data = (self.de_norm(target_data) * 255)
+        mask_src = mask_src.expand(-1, 3, mask_src.size(2), mask_src.size(3))
+        mask_tar = mask_tar.expand(-1, 3, mask_tar.size(2), mask_tar.size(3))
+        input_masked = input_data * mask_src
+        target_masked = target_data * mask_tar
+        # dstImg = (input_masked.data).cpu().clone()
+        # refImg = (target_masked.data).cpu().clone()
+        input_match = []
+        for (i, t, idx) in zip(input_masked, target_masked, index):
+            input_match.append(histogram_matching(i, t, idx))
+        input_match = torch.stack(input_match)
+        input_match = self.to_var(input_match, requires_grad=False)
+        loss = self.criterionL1(input_masked, input_match)
+        return loss
     
+    def lambda_preprocess(self, id_A, class_A, id_B, class_B):
+        id_A = np.array(id_A).reshape((len(id_A), 1))
+        id_B = np.array(id_B).reshape((len(id_B), 1))
+        class_A = np.array(class_A).reshape((len(class_A), 1))
+        class_B = np.array(class_B).reshape((len(class_B), 1))
+
+        _id = np.array(id_A == id_B)
+        _class = np.array(class_A == class_B)
+        
+        # class 1 - face same, makeup same
+        class1 = _id * _class
+        # class 2 - face same, makeup diff
+        class2 = _id * (_class == False)
+        # class 3 - face diff, makeup diff
+        class3 = (_id == False) * (_class == False)
+
+        # class 1,2 일 경우 face loss 계산
+        lambda_face = class1 + class2 # _id
+
+        # class 2 일 경우 makeup loss 계산
+        lambda_makeup = class2
+
+        # class 2,3 일 경우 나머지 loss 계산
+        lambda_rest = class2 + class3 # _class == False
+
+        lambda_face = torch.from_numpy(lambda_face.astype(int)).cuda()
+        lambda_makeup = torch.from_numpy(lambda_makeup.astype(int)).cuda()
+        lambda_rest = torch.from_numpy(lambda_rest.astype(int)).cuda()
+
+        return lambda_face, lambda_makeup, lambda_rest
+        
     def train(self):
         # The number of iterations per epoch
         self.iters_per_epoch = len(self.data_loader_train)
@@ -286,7 +337,21 @@ class Solver_makeupGAN4(object):
         # Start training
         self.start_time = time.time()
         for self.e in range(start, self.num_epochs):
-            for self.i, (img_A, img_B, mask_A, mask_B) in enumerate(self.data_loader_train):
+            for self.i, sampled_batch in enumerate(self.data_loader_train):
+                img_A = sampled_batch['image_A']
+                img_B = sampled_batch['image_B']
+
+                mask_A = sampled_batch['mask_A']
+                mask_B = sampled_batch['mask_B']
+
+                id_A = sampled_batch['id_A']
+                id_B = sampled_batch['id_B']
+
+                class_A = sampled_batch['class_A']
+                class_B = sampled_batch['class_B']
+
+                lambda_face, lambda_makeup, lambda_rest = self.lambda_preprocess(id_A, class_A, id_B, class_B)
+
                 # Convert tensor to variable
                 # mask attribute: 0:background 1:face 2:left-eyebrown 3:right-eyebrown 4:left-eye 5: right-eye 6: nose 
                 # 7: upper-lip 8: teeth 9: under-lip 10:hair 11: left-ear 12: right-ear 13: neck
@@ -323,21 +388,21 @@ class Solver_makeupGAN4(object):
                 org_A = self.to_var(img_A, requires_grad=False)
                 ref_B = self.to_var(img_B, requires_grad=False)
                 # Fake
-                base_A, makeup_A = self.E(org_A)
-                base_B, makeup_B = self.E(ref_B)
+                pose_A, face_A, makeup_A = self.E(org_A)
+                pose_B, face_B, makeup_B = self.E(ref_B)
 
-                fake_A = self.G(base_A, makeup_B)
-                fake_B = self.G(base_B, makeup_A)
+                fake_A = self.G(pose_A, face_A, makeup_B)
+                fake_B = self.G(pose_B, face_B, makeup_A)
 
                 fake_A = Variable(fake_A.data).detach()
                 fake_B = Variable(fake_B.data).detach()
 
                 # training D_A, D_A aims to distinguish class B
                 out = getattr(self, "D_" + cls_A)(ref_B)
-                d_A_loss_real = self.criterionGAN(out, True)
+                d_A_loss_real = self.criterionGAN(out, True) # todo - change it to batch wise
 
                 out = getattr(self, "D_" + cls_A)(fake_A)
-                d_A_loss_fake = self.criterionGAN(out, False)
+                d_A_loss_fake = self.criterionGAN(out, False) # todo - change it to batch wise
 
                 # Backward + Optimize
                 d_A_loss = (d_A_loss_real + d_A_loss_fake) * 0.5
@@ -351,11 +416,11 @@ class Solver_makeupGAN4(object):
 
                 # training D_B, D_B aims to distinguish class A
                 out = getattr(self, "D_" + cls_B)(org_A)
-                d_B_loss_real = self.criterionGAN(out, True)
+                d_B_loss_real = self.criterionGAN(out, True) # todo - change it to batch wise
 
                 out = getattr(self, "D_" + cls_B)(fake_B)
-                d_B_loss_fake =  self.criterionGAN(out, False)
-
+                d_B_loss_fake =  self.criterionGAN(out, False) # todo - change it to batch wise
+ 
                 # Backward + Optimize
                 d_B_loss = (d_B_loss_real + d_B_loss_fake) * 0.5
                 getattr(self, "d_" + cls_B + "_optimizer").zero_grad()
@@ -367,87 +432,110 @@ class Solver_makeupGAN4(object):
 
                  # ================== Train G ================== #
                 if (self.i + 1) % self.ndis == 0:
+                    pose_A, face_A, makeup_A = self.E(org_A)
+                    pose_B, face_B, makeup_B = self.E(ref_B)
+
+                    # face loss
+                    loss_face = self.criterionL1_none_reduct(face_A, face_B)
+                    loss_face = loss_face.view(self.batch_size, -1).mean(1, keepdim=True)
+                    loss_face = loss_face * lambda_face
+                    loss_face = loss_face.mean()
+                    
+                    # makeup loss
+                    loss_makeup = self.criterionL1_none_reduct(makeup_A, makeup_B)
+                    loss_makeup = loss_makeup.view(self.batch_size, -1).mean(1, keepdim=True)
+                    loss_makeup = loss_makeup * lambda_makeup
+                    loss_makeup = loss_makeup.mean()
+                    
+                    # todo - add logs of makeup loss and face loss
+                    # todo - apply makeup loss and face loss to network like under code
+                    # self.e_optimizer.zero_grad()
+                    # self.g_optimizer.zero_grad()
+                    # g_loss.backward(retain_graph=True)
+                    # self.e_optimizer.step()
+                    # self.g_optimizer.step()
 
                     # identity loss
                     if self.lambda_idt > 0:
                         # G should be identity if ref_B or org_A is fed
-                        base_A, makeup_A = self.E(org_A)
-                        base_B, makeup_B = self.E(ref_B)
+                        idt_A = self.G(pose_A, face_A, makeup_A)
+                        idt_B = self.G(pose_B, face_B, makeup_B)
                         
-                        idt_A = self.G(base_A, makeup_A)
-                        idt_B = self.G(base_B, makeup_B)
+                        loss_idt_A = self.criterionL1_none_reduct(idt_A, org_A)
+                        loss_idt_A = loss_idt_A.view(self.batch_size, -1).mean(1, keepdim=True)
+                        loss_idt_A = loss_idt_A * lambda_rest
+                        loss_idt_A = loss_idt_A.mean()
 
-                        loss_idt_A = self.criterionL1(idt_A, org_A) * self.lambda_A * self.lambda_idt
-                        loss_idt_B = self.criterionL1(idt_B, ref_B) * self.lambda_B * self.lambda_idt
+                        loss_idt_B = self.criterionL1_none_reduct(idt_B, org_B)
+                        loss_idt_B = loss_idt_B.view(self.batch_size, -1).mean(1, keepdim=True)
+                        loss_idt_B = loss_idt_B * lambda_rest
+                        loss_idt_B = loss_idt_B.mean()
 
-                        loss_idt = loss_idt_A + loss_idt_B
+                        loss_idt = (loss_idt_A + loss_idt_B) * 10 * self.lambda_idt
                     else:
                         loss_idt = 0
                 
                     # Fake
-                    base_A, makeup_A = self.E(org_A)
-                    base_B, makeup_B = self.E(ref_B)
-
-                    fake_A = self.G(base_A, makeup_B)
-                    fake_B = self.G(base_B, makeup_A)
+                    fake_A = self.G(pose_A, face_A, makeup_B)
+                    fake_B = self.G(pose_B, face_B, makeup_A)
 
                     # GAN loss D_A(G_A(A))
                     pred_fake = getattr(self, "D_" + cls_A)(fake_A)
-                    g_A_loss_adv = self.criterionGAN(pred_fake, True)
+                    g_A_loss_adv = self.criterionGAN(pred_fake, True) # todo - change it to batch wise
 
                     # GAN loss D_B(G_B(B))
                     pred_fake = getattr(self, "D_" + cls_B)(fake_B)
-                    g_B_loss_adv = self.criterionGAN(pred_fake, True)
+                    g_B_loss_adv = self.criterionGAN(pred_fake, True) # todo - change it to batch wise
 
                     # color_histogram loss
                     g_A_loss_his = 0
                     g_B_loss_his = 0
                     if self.checkpoint or self.direct:
                         if self.lips==True:
-                            g_A_lip_loss_his = self.criterionHis(fake_A, ref_B, mask_A_lip, mask_B_lip, index_A_lip) * self.lambda_his_lip
-                            g_B_lip_loss_his = self.criterionHis(fake_B, org_A, mask_B_lip, mask_A_lip, index_B_lip) * self.lambda_his_lip
+                            g_A_lip_loss_his = self.criterionHis(fake_A, ref_B, mask_A_lip, mask_B_lip, index_A_lip) * self.lambda_his_lip # todo - change it to batch wise
+                            g_B_lip_loss_his = self.criterionHis(fake_B, org_A, mask_B_lip, mask_A_lip, index_B_lip) * self.lambda_his_lip # todo - change it to batch wise
                             g_A_loss_his += g_A_lip_loss_his
                             g_B_loss_his += g_B_lip_loss_his
                         if self.skin==True:
-                            g_A_skin_loss_his = self.criterionHis(fake_A, ref_B, mask_A_skin, mask_B_skin, index_A_skin) * self.lambda_his_skin_1
-                            g_B_skin_loss_his = self.criterionHis(fake_B, org_A, mask_B_skin, mask_A_skin, index_B_skin) * self.lambda_his_skin_2
+                            g_A_skin_loss_his = self.criterionHis(fake_A, ref_B, mask_A_skin, mask_B_skin, index_A_skin) * self.lambda_his_skin_1 # todo - change it to batch wise
+                            g_B_skin_loss_his = self.criterionHis(fake_B, org_A, mask_B_skin, mask_A_skin, index_B_skin) * self.lambda_his_skin_2 # todo - change it to batch wise
                             g_A_loss_his += g_A_skin_loss_his
                             g_B_loss_his += g_B_skin_loss_his
                         if self.eye==True:
-                            g_A_eye_left_loss_his = self.criterionHis(fake_A, ref_B, mask_A_eye_left, mask_B_eye_left, index_A_eye_left) * self.lambda_his_eye
-                            g_B_eye_left_loss_his = self.criterionHis(fake_B, org_A, mask_B_eye_left, mask_A_eye_left, index_B_eye_left) * self.lambda_his_eye
-                            g_A_eye_right_loss_his = self.criterionHis(fake_A, ref_B, mask_A_eye_right, mask_B_eye_right, index_A_eye_right) * self.lambda_his_eye
-                            g_B_eye_right_loss_his = self.criterionHis(fake_B, org_A, mask_B_eye_right, mask_A_eye_right, index_B_eye_right) * self.lambda_his_eye
+                            g_A_eye_left_loss_his = self.criterionHis(fake_A, ref_B, mask_A_eye_left, mask_B_eye_left, index_A_eye_left) * self.lambda_his_eye # todo - change it to batch wise
+                            g_B_eye_left_loss_his = self.criterionHis(fake_B, org_A, mask_B_eye_left, mask_A_eye_left, index_B_eye_left) * self.lambda_his_eye # todo - change it to batch wise
+                            g_A_eye_right_loss_his = self.criterionHis(fake_A, ref_B, mask_A_eye_right, mask_B_eye_right, index_A_eye_right) * self.lambda_his_eye # todo - change it to batch wise
+                            g_B_eye_right_loss_his = self.criterionHis(fake_B, org_A, mask_B_eye_right, mask_A_eye_right, index_B_eye_right) * self.lambda_his_eye # todo - change it to batch wise
                             g_A_loss_his += g_A_eye_left_loss_his + g_A_eye_right_loss_his
                             g_B_loss_his += g_B_eye_left_loss_his + g_B_eye_right_loss_his
                     
                     # cycle loss
-                    base_fake_A, makeup_fake_A = self.E(fake_A)
-                    base_fake_B, makeup_fake_B = self.E(fake_B)
+                    pose_fake_A, face_fake_A, makeup_fake_A = self.E(fake_A)
+                    pose_fake_B, face_fake_B, makeup_fake_B = self.E(fake_B)
 
-                    rec_A = self.G(base_fake_A, makeup_fake_B)
-                    rec_B = self.G(base_fake_B, makeup_fake_A)
+                    rec_A = self.G(pose_fake_A, face_fake_A, makeup_fake_B)
+                    rec_B = self.G(pose_fake_B, face_fake_B, makeup_fake_A)
 
-                    g_loss_rec_A = self.criterionL1(rec_A, org_A) * self.lambda_A
-                    g_loss_rec_B = self.criterionL1(rec_B, ref_B) * self.lambda_B
+                    g_loss_rec_A = self.criterionL1(rec_A, org_A) * 10 # self.lambda_A # todo - change it to batch wise
+                    g_loss_rec_B = self.criterionL1(rec_B, ref_B) * 10 # self.lambda_B # todo - change it to batch wise
 
                     # vgg loss
                     vgg_org = self.vgg(org_A, self.content_layer)[0]
                     vgg_org = Variable(vgg_org.data).detach()
                     vgg_fake_A = self.vgg(fake_A, self.content_layer)[0]
-                    g_loss_A_vgg = self.criterionL2(vgg_fake_A, vgg_org) * self.lambda_A * self.lambda_vgg
+                    g_loss_A_vgg = self.criterionL2(vgg_fake_A, vgg_org) * 10 * self.lambda_vgg # * self.lambda_A * self.lambda_vgg # todo - change it to batch wise
                     
                     vgg_ref = self.vgg(ref_B, self.content_layer)[0]
                     vgg_ref = Variable(vgg_ref.data).detach()
                     vgg_fake_B = self.vgg(fake_B, self.content_layer)[0]
-                    g_loss_B_vgg = self.criterionL2(vgg_fake_B, vgg_ref) * self.lambda_B * self.lambda_vgg
+                    g_loss_B_vgg = self.criterionL2(vgg_fake_B, vgg_ref) * 10 * self.lambda_vgg # * self.lambda_B * self.lambda_vgg # todo - change it to batch wise
 					
                     loss_rec = (g_loss_rec_A + g_loss_rec_B + g_loss_A_vgg + g_loss_B_vgg) * 0.5
 
                     # Combined loss
-                    g_loss = g_A_loss_adv + g_B_loss_adv + loss_rec + loss_idt
+                    g_loss = g_A_loss_adv + g_B_loss_adv + loss_rec + loss_idt # todo - change it to batch wise
                     if self.checkpoint or self.direct:
-                        g_loss = g_A_loss_adv + g_B_loss_adv + loss_rec + loss_idt + g_A_loss_his + g_B_loss_his
+                        g_loss = g_A_loss_adv + g_B_loss_adv + loss_rec + loss_idt + g_A_loss_his + g_B_loss_his # todo - change it to batch wise
                     
                     self.e_optimizer.zero_grad()
                     self.g_optimizer.zero_grad()
@@ -510,9 +598,9 @@ class Solver_makeupGAN4(object):
             os.mkdir(result_path_train)
         save_path = os.path.join(result_path_train, '{}_{}_fake.jpg'.format(self.e, self.i))
         save_image(self.de_norm(img_train_list.data), save_path, normalize=True)
-        self.writer.add_image('Train_Image', self.de_norm(img_train_list.data.squeeze()), self.e*self.iters_per_epoch + self.i+1)
+        self.writer.add_image('Train_Image', self.de_norm(img_train_list.data.squeeze()), self.e*self.iters_per_epoch + self.i+1) # todo - change it to batch wise
 
-    def vis_test(self):
+    def vis_test(self): 
         # saving test results
         mode = "test_vis"
         for i, (img_A, img_B) in enumerate(self.data_loader_test):

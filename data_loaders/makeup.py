@@ -31,6 +31,7 @@ class MAKEUP(Dataset):
                 setattr(self, "test_" + cls + "_lines", open(getattr(self, "test_" + cls + "_list_path"), 'r').readlines())
                 setattr(self, "num_of_test_" + cls + "_data", len(getattr(self, "test_" + cls + "_lines")))
 
+        print('Makeup dataloader')
         print ('Start preprocessing dataset..!')
         self.preprocess()
         print ('Finished preprocessing dataset..!')

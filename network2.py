@@ -101,9 +101,11 @@ class Generator(nn.Module):
 
         # Pose and Face blend
         layers_blend = []
-        for i in range(3):
+        for i in range(4):
             layers_blend.append(ResidualBlock(dim_in=input_dim*2, dim_out=input_dim*2))
-        layers_blend.append(ResidualBlock(dim_in=input_dim*2, dim_out=input_dim))
+        layers_blend.append(nn.Conv2d(input_dim*2, input_dim, kernel_size=3, stride=1, padding=1, bias=False))
+        layers_blend.append(nn.InstanceNorm2d(input_dim, affine=True))
+        layers_blend.append(nn.ReLU(inplace=True))
 
         self.blend = nn.Sequential(*layers_blend)
 

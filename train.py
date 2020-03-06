@@ -10,12 +10,14 @@ from solver_cycle import Solver_cycleGAN
 from solver_makeup import Solver_makeupGAN
 from solver_makeup2 import Solver_makeupGAN2
 from solver_makeup3 import Solver_makeupGAN3
+from solver_makeup4 import Solver_makeupGAN4
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train GAN')
     # general
-    parser.add_argument('--data_path', default='makeup_dataset/', type=str, help='training and test data path')
-    parser.add_argument('--dataset', default='MAKEUP', type=str, help='dataset name, MAKEUP means two domain, MMAKEUP means multi-domain')
+    parser.add_argument('--data_path', default='makeup_dataset/new loader/10_20/', type=str, help='training and test data path')
+    parser.add_argument('--dataset', default='MAKEUP2', type=str, help='dataset name, MAKEUP means two domain, MMAKEUP means multi-domain')
     parser.add_argument('--gpus', default='0', type=str, help='GPU device to train with')
     parser.add_argument('--batch_size', default='1', type=int, help='batch_size')
     parser.add_argument('--vis_step', default='1260', type=int, help='steps between visualization')
@@ -60,7 +62,9 @@ def train_net():
     elif args.model =='makeupGAN2':
         solver = Solver_makeupGAN2(data_loaders, config, dataset_config)
     elif args.model =='makeupGAN3':
-        solver = Solver_makeupGAN3(data_loaders, config, dataset_config)      
+        solver = Solver_makeupGAN3(data_loaders, config, dataset_config)
+    elif args.model =='makeupGAN4':
+        solver = Solver_makeupGAN4(data_loaders, config, dataset_config)      
     else:
         print("model that not support")
         exit()

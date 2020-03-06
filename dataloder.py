@@ -2,6 +2,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 from data_loaders.makeup import MAKEUP
+from data_loaders.makeup2 import MAKEUP2
 import torch
 import numpy as np
 import PIL

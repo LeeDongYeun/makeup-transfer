@@ -56,7 +56,7 @@ config.test_model = "51_2000"
 # Setting datasets
 dataset_config = edict()
 
-dataset_config.name = 'MAKEUP'
+dataset_config.name = 'MAKEUP2' # 'MAKEUP'
 dataset_config.dataset_path = default.data_path
 dataset_config.img_size = 256
 
