@@ -600,7 +600,7 @@ class Solver_makeupGAN4(object):
         save_image(self.de_norm(img_train_list.data), save_path, normalize=True)
         self.writer.add_image('Train_Image', self.de_norm(img_train_list.data.squeeze()), self.e*self.iters_per_epoch + self.i+1) # todo - change it to batch wise
 
-    def vis_test(self): 
+    def vis_test(self): # to do - change network  
         # saving test results
         mode = "test_vis"
         for i, (img_A, img_B) in enumerate(self.data_loader_test):
@@ -638,7 +638,7 @@ class Solver_makeupGAN4(object):
             save_image(self.de_norm(image_list.data), save_path, normalize=True)
             #print('Translated test images and saved into "{}"..!'.format(save_path))
 
-    def test(self):
+    def test(self): # to do - change network 
         # Load trained parameters
         G_path = os.path.join(self.snapshot_path, '{}_G.pth'.format(self.test_model))
         self.G.load_state_dict(torch.load(G_path))
